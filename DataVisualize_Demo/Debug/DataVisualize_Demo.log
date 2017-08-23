@@ -1,0 +1,60 @@
+﻿生成启动时间为 2017/5/31 12:07:25。
+     1>项目“C:\Users\machenike\Desktop\DataVisualize_Demo\DataVisualize_Demo\DataVisualize_Demo.vcxproj”在节点 2 上(Build 个目标)。
+     1>ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\CL.exe /c /ZI /nologo /W3 /WX- /sdl /Od /Oy- /D WIN32 /D _DEBUG /D _WINDOWS /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Yu"stdafx.h" /Fp"Debug\DataVisualize_Demo.pch" /Fo"Debug\\" /Fd"Debug\vc120.pdb" /Gd /TP /analyze- /errorReport:prompt Plot.cpp
+         Plot.cpp
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.h(88): warning C4244: “return”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.h(89): warning C4244: “return”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.h(90): warning C4244: “return”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.h(91): warning C4244: “return”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(168): warning C4800: “BOOL”: 将值强制为布尔值“true”或“false”(性能警告)
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(183): warning C4244: “参数”: 从“float”转换到“GLsizei”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(183): warning C4244: “参数”: 从“float”转换到“GLint”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(221): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(222): warning C4244: “+=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(224): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(225): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(228): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(229): warning C4244: “+=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(231): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(232): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(242): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(243): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(244): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(245): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(247): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(248): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(249): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(250): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(259): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(302): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(303): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(310): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(311): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(319): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(320): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(328): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(329): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(342): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(343): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(344): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(345): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(635): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(636): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(644): warning C4244: “=”: 从“double”转换到“LONG”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(645): warning C4244: “=”: 从“double”转换到“LONG”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(722): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(748): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+     1>c:\users\machenike\desktop\datavisualize_demo\datavisualize_demo\plot.cpp(765): warning C4244: “参数”: 从“double”转换到“GLfloat”，可能丢失数据
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\machenike\Desktop\DataVisualize_Demo\Debug\DataVisualize_Demo.exe" /INCREMENTAL /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\machenike\Desktop\DataVisualize_Demo\Debug\DataVisualize_Demo.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\machenike\Desktop\DataVisualize_Demo\Debug\DataVisualize_Demo.lib" /MACHINE:X86 Debug\DataVisualize_Demo.res
+         Debug\cMyTimer.obj
+         Debug\DataVisualize_Demo.obj
+         Debug\Plot.obj
+         Debug\stdafx.obj
+         DataVisualize_Demo.vcxproj -> C:\Users\machenike\Desktop\DataVisualize_Demo\Debug\DataVisualize_Demo.exe
+     1>已完成生成项目“C:\Users\machenike\Desktop\DataVisualize_Demo\DataVisualize_Demo\DataVisualize_Demo.vcxproj”(Build 个目标)的操作。
+
+生成成功。
+
+已用时间 00:00:05.27
