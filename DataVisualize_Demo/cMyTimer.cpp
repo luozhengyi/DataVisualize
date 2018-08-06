@@ -2,6 +2,9 @@
 #include "cMyTimer.h"
 #include "process.h"		//多线程需要的头文件
 
+
+ListTimer cMyTimer::m_listTimer;
+
 /*******************************全局函数*********************************/
 void CallBack_TimerProc(void* p)	//定时器线程的回调函数
 {//不停的运行定时器控制函数控制定时器运行
@@ -122,5 +125,12 @@ void cMyTimer::DeletTimer(unsigned timerID)
 			return;
 		}
 	}
+}
+
+void cMyTimer::ClearTimer()
+{
+	itListTimer it = m_listTimer.begin();
+	for (; it != m_listTimer.end();)
+		it = m_listTimer.erase(it);//删除定时器
 }
 /************************************************************************/

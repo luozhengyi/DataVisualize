@@ -6,6 +6,7 @@
 #include "list"
 #include "iostream"
 #include "windows.h"
+#include <thread>
 using namespace std;
 
 /******************************* 定时器结构体 ****************************/
@@ -55,10 +56,13 @@ public:
 	void CheckDelTimer();
 	//根据timerID删除定时器
 	void DeletTimer(unsigned timerID);
-
+public:
+	void ClearTimer();	//清除所有定时器
 
 private:
-	ListTimer m_listTimer;	//列表用来保存所有的定时器
+	static ListTimer m_listTimer;	//列表用来保存所有的定时器
+private:
+	//std::thread m_thread;	//多线程
 
 };
 /*********************************************************************/

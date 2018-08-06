@@ -83,19 +83,31 @@
   <ItemGroup>
     <ClInclude Include="cMyTimer.h" />
     <ClInclude Include="DataVisualize_Demo.h" />
+    <ClInclude Include="DFD.h" />
+    <ClInclude Include="DSP.h" />
+    <ClInclude Include="FIR.h" />
+    <ClInclude Include="gdiPlusUse.h" />
+    <ClInclude Include="myMutex.h" />
     <ClInclude Include="Plot.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="WndManager.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cMyTimer.cpp" />
     <ClCompile Include="DataVisualize_Demo.cpp" />
+    <ClCompile Include="DFD.cpp" />
+    <ClCompile Include="DSP.cpp" />
+    <ClCompile Include="FIR.cpp" />
+    <ClCompile Include="gdiPlusUse.cpp" />
+    <ClCompile Include="myMutex.cpp" />
     <ClCompile Include="Plot.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="WndManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DataVisualize_Demo.rc" />

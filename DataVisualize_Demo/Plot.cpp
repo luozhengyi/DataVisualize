@@ -7,6 +7,11 @@
 #include<algorithm>
 #include <math.h>
 #include <valarray>
+#include <windows.h>
+#include <ctime>
+#include <mutex>
+#include "WndManager.h"
+#include "DSP.h"
 /***************************OpenGLÍ·ÎÄ¼þ/¾²Ì¬¿â****************************/
 #include <GL/gl.h>  
 #include <GL/glu.h>  
@@ -15,79 +20,185 @@
 #pragma comment(lib,"gl//glaux.lib")
 #pragma comment(lib,"gl//opengl32.lib")
 /************************************************************************/
+
+#pragma comment(lib,"ws2_32.lib")
+
+
+//¾²Ì¬±äÁ¿¶¨Òå
+int CPlot::objNum = 0;	//ÀàÊµÀý»¯¸öÊý
+
+enDataSource CPlot::m_enDataSource = en_From_File;								//Êý¾ÝÀ´Ô´
+wchar_t*	 CPlot::m_szDataPath = new wchar_t[NAME_LEN]();						//Êý¾ÝÎÄ¼þÂ·¾¶
+int			 CPlot::m_iDataLen = 0;												//Êý¾Ý³¤¶È
+INT16*		 CPlot::m_pDataX = new INT16[g_sockFrameLen / 2]();					//Êý¾ÝÏòÁ¿
+INT16*		 CPlot::m_pDataY = new INT16[g_sockFrameLen / 2]();					//Êý¾ÝÏòÁ¿
+enDrawStatus CPlot::m_enDrawStatus = E_Draw_Fresh;								//E_Draw_Fresh£º±íÊ¾»æÖÆÊµÊ±Êý¾Ý£»
+stFile		 CPlot::m_stFile;													//Êý¾Ý²É¼¯ÐÅÏ¢½á¹¹Ìå
+
+
+float			CPlot::m_fs = 20;				//²ÉÑùÆµÂÊ£ºµ¥Î»MHZ
+double*			CPlot::m_fft_pin = NULL;		//fftÊäÈëÐÅºÅ
+double*			CPlot::m_fft_pabs = NULL;		//fftÊä³öÐÅºÅµÄ¾ø¶ÔÖµ
+fftw_complex*	CPlot::m_fft_pout = NULL;		//fftÊä³ö¸´ÐÅºÅ
+
+
+
+/************************************************************************/
+/* TCP½ÓÊÕ»Øµ÷º¯Êý                                                  */
+/************************************************************************/
+//const int g_sockFrameLen = sizeof(short) * 21413580;
+const int g_sockFrameLen = sizeof(short) * 262144;
+//const int g_sockFrameLen = sizeof(short) * 524288;
+char ato_buff[g_sockFrameLen];	//Ò»Ö¡³¤¶È
+std::mutex g_mtx;
+extern CWndManager g_WndManager;
+
+void CallBack_RecvProc(void* p)
+{
+
+	do
+	{
+		SOCKET sockClient = *(SOCKET*)p;
+		if (sockClient == INVALID_SOCKET)
+			break;
+
+		int recvcount = 0;
+		int irecv = 0, i = 0;
+		//CMyMutex m_mtx;
+
+		while (1)
+		{
+			//½ÓÊÕÊý¾Ý
+			if (recvcount == 0)
+				g_mtx.lock();
+			irecv = recv(sockClient, (char*)ato_buff + recvcount, g_sockFrameLen - recvcount, 0);
+			if (irecv == 0 || irecv == SOCKET_ERROR)
+			{
+				*(SOCKET*)p = INVALID_SOCKET;
+				if (recvcount >= 0)	//Êý¾ÝÎ´ÊÕÂúÒ»Ö¡£¬tcpÁ¬½ÓÖÐ¶Ï
+					g_mtx.unlock();
+				_endthread();//É¾³ýÏß³Ì
+				return;
+			}
+
+
+			recvcount = (recvcount + irecv) % g_sockFrameLen;
+			if (recvcount == 0)
+			{
+				do 
+				{
+					if (CPlot::GetstFile().bfile && CPlot::GetstFile().frameNum >= 0)
+					{
+						if (CPlot::GetstFile().frameNum == 0)
+						{
+							CPlot::GetstFile().StopRead();
+							CPlot::SetDrawStatus(E_Draw_Fresh);
+							break;
+						}	
+						fwrite(ato_buff, g_sockFrameLen, 1, CPlot::GetstFile().fp);
+						CPlot::GetstFile().frameNum--;
+					}
+				} while (0);
+				g_mtx.unlock();
+			}
+				
+		}
+
+	} while (false);
+}
+
+
+
+
 CPlot::CPlot()
 {
-	//m_ClrBG = { 0.0f, 0.0f, 0.0f, 0.0f };		//»æÍ¼Çø±³¾°ºÚÉ«
-	m_ClrBG = { 0.45f, 0.45f, 0.45f, 0.0f };
-	//m_ClrWnd = { 0.51f, 0.51f, 0.51f, 0.0f };	//´°Ìå±³¾°»ÒÉ«
-	m_ClrWnd = { 1.0f, 1.0f, 1.0f, 0.0f };		//´°Ìå±³¾°»ÒÉ«
-	m_ClrLine = { 1.0f, 0.0f, 0.0f, 0.0f };		//»æÍ¼ºìÉ«
-	m_ClrText = { 1.0f, 1.0f, 1.0f, 0.0f };		//ÎÄ×Ö°×É«
-	m_ClrAxis = { 0.0f, 0.0f, 0.0f, 0.0f };		//×ø±êÑÕÉ«
-
+	objNum++;
 	m_enFigureType = E_FigureType_Normal;	//»æÖÆÆÕÍ¨µÄÍ¼
-	m_enDrawType = en_Draw_Spectrum;	//»æÖÆÔ­Ê¼ÐÅºÅÍ¼
-	m_enDataSource = en_From_File;			//Ä¬ÈÏ´ÓÎÄ¼þ¶ÁÈ¡Êý¾Ý
+	m_enDrawType = en_Draw_Orignal;			//»æÖÆÔ­Ê¼ÐÅºÅÍ¼
 
 	m_bShowCoord = false;
 	m_hOldFont = NULL;
 	m_hNewFont = NULL;
-	std::memset(m_szDataPath,0,sizeof(m_szDataPath));	
-	m_pData = NULL;
-	m_iDataLen = 0;
-	m_iScaleCount = 0;
 
-	m_fft_pin = NULL;
-	m_fft_pout = NULL;
-	m_fs = 100;
-
-	m_xmin = 0.0;
-	m_xmax = 1.0;
-	m_ymin = 0.0;
-	m_ymax = 1.0;
-	m_xscale = (m_xmax - m_xmin) / 10.0;
-	m_yscale = (m_ymax - m_ymin) / 10.0;
+	m_dsp = new CDSP(this);
 
 }
 
 CPlot::~CPlot()
 {
-	//Çå³ýÊý¾ÝÏòÁ¿
-	if (!m_veDataX.empty())
-		m_veDataX.clear();
-	if (!m_veDataY.empty())
-		m_veDataY.clear();
-	fftw_free(m_fft_pin);
-	fftw_free(m_fft_pout);
-	fftw_free(m_fft_pabs);
+	objNum--;
+	if (objNum == 0)
+	{
+		//Çå³ýÊý¾ÝÏòÁ¿
+		if (m_szDataPath)
+			delete[] m_szDataPath;
+		if (m_pDataX != NULL)
+			delete[] m_pDataX;
+		if (m_pDataY != NULL)
+			delete[] m_pDataY;
+		if (m_fft_pin)
+			fftw_free(m_fft_pin);
+		if (m_fft_pout)
+			fftw_free(m_fft_pout);
+		if (m_fft_pabs)
+			fftw_free(m_fft_pabs);
+		m_fft_pin = NULL;
+		m_fft_pout = NULL;
+		m_fft_pabs = NULL;
+	}	
+
+	//»¹Ô­»æÍ¼»·¾³
+	DestroyPlot();
+
+	//DSP×ÊÔ´ÊÍ·Å
+	if (m_dsp != nullptr)
+		delete m_dsp;
+
 }
 
 unsigned CPlot::OnTimer(unsigned timerID, int iParam, string strParam)
 {
+	unsigned uiRet = 1;
 	switch (timerID)
 	{
 	case DRAW_TIMER:
-		//xaxis += 10;
-		//yaxis += 10;
-		SendMessage(m_hWnd, WM_PAINT, NULL, NULL);	//ÔÚWM_PAINTÏûÏ¢ÀïÃæ¾Í²»ÉÁË¸ÁËÊÇÎªÉ¶£¿
+	{
+		if (m_enDrawStatus == E_Draw_Fresh)
+		{
+			g_mtx.lock();
+			GetData();
+			g_mtx.unlock();
+
+		}
+		
+		//±éÀúËùÓÐ×Ó´°¿Ú
+		childwndmap::iterator it = g_WndManager.GetChildWndMap()->begin();
+		while (it != g_WndManager.GetChildWndMap()->end())
+		{
+			if (it->second == PlotWndProc && it->first->GetWndStatus() == E_WND_Show)	//Í¨Öª»æÍ¼´°¿Ú½øÐÐ»æÍ¼
+				SendMessage(it->first->GetWnd(), WM_PAINT, NULL, NULL);	//ÔÚWM_PAINTÏûÏ¢ÀïÃæ¾Í²»ÉÁË¸ÁËÊÇÎªÉ¶£¿
+			++it;
+		}
+		
 		break;
+	}	
 	default:
 		break;
 	}
-	return 1;
+	return uiRet;
 }
 
 bool CPlot::Init(HWND hWnd)
 {
 	bool bRet = false;
-	do 
+	do
 	{
 		if (hWnd == INVALID_HANDLE_VALUE)
 			break;
 		m_hWnd = hWnd;
 		m_hDC = GetDC(m_hWnd);				//µÃµ½µ±Ç°´°¿ÚµÄÉè±¸»·¾³  
-		//ÉèÖÃ¾ØÐÎÇøÓò
-		SetRect();
+		//ÉèÖÃOpenGL»æÍ¼µÄ¾ØÐÎÇøÓò
+		SetFigRect();
 		//ÉèÖÃwin32ÖÐµÄOpenGL»·¾³
 		SetupPixelFormat();					//µ÷ÓÃÏñËØ¸ñÊ½ÉèÖÃº¯Êý  
 		m_hRC = wglCreateContext(m_hDC);	//´´½¨OpenGL»æÍ¼»·¾³²¢´´½¨Ò»¸öÖ¸ÏòOpenGL»æÖÆ»·¾³µÄ¾ä±ú  
@@ -96,10 +207,32 @@ bool CPlot::Init(HWND hWnd)
 		InitGL();
 		InitText();
 
-		GetData();
-		GetMaxMinValue();
 
-		AddTimer(DRAW_TIMER, 50);
+
+		if (m_enDataSource != en_From_Sock)
+		{
+			GetData();
+			GetMaxMinValue();
+		}
+
+		//Ö»ÐèÒªÈÃÒ»¸ö»æÍ¼´°¿Ú´´½¨¶¨Ê±Æ÷¾ÍÐÐ¡£
+		childwndmap::iterator it = g_WndManager.GetChildWndMap()->begin();
+		while (it != g_WndManager.GetChildWndMap()->end())
+		{
+			CPlot *pPlot = it->first->GetPlotObj();
+			CPlot *pPlot1 = this;
+			if ((it->first->GetWnd()) == hWnd)
+			{
+				if (it->first->GetWndID() == E_WND_Plot_Right)
+				{
+					ClearTimer();	//ÏÈÇåÀíËùÓÐ¶¨Ê±Æ÷
+					AddTimer(DRAW_TIMER, 100);
+					//AddTimer(GETDATA_TIMER, 50);
+				}
+			}
+			
+			++it;
+		}
 
 		bRet = true;
 	} while (false);
@@ -111,7 +244,7 @@ void CPlot::InitGL()
 {
 	glShadeModel(GL_SMOOTH);                 // ÆôÓÃÒõÓ°Æ½»¬  
 	// ÉèÖÃ´°Ìå±³¾°ÑÕÉ«
-	glClearColor(m_ClrWnd.R, m_ClrWnd.G, m_ClrWnd.B, m_ClrWnd.A);
+	glClearColor(m_stFigClrInfo.ClrWnd.R, m_stFigClrInfo.ClrWnd.G, m_stFigClrInfo.ClrWnd.B, m_stFigClrInfo.ClrWnd.A);
 	glClearDepth(1.0f);                      // ÉèÖÃÉî¶È»º´æ   
 	glDepthFunc(GL_LEQUAL);                  // Ëù×÷Éî¶È²âÊÔµÄÀàÐÍ  
 	glEnable(GL_DEPTH_TEST);                 // ÆôÓÃÉî¶È²âÊÔ 
@@ -144,7 +277,7 @@ void CPlot::InitText()
 void CPlot::SetupPixelFormat() //ÎªÉè±¸»·¾³ÉèÖÃÏñËØ¸ñÊ½  
 {
 	int nPixelFormat; //ÏñËØ¸ñÊ½±äÁ¿  
-	static PIXELFORMATDESCRIPTOR pfd = { sizeof(PIXELFORMATDESCRIPTOR), //Êý¾Ý½á¹¹´óÐ¡  
+	PIXELFORMATDESCRIPTOR pfd = { sizeof(PIXELFORMATDESCRIPTOR), //Êý¾Ý½á¹¹´óÐ¡  
 		1,							//°æ±¾ºÅ£¬×ÜÉèÎª1  
 		PFD_DRAW_TO_WINDOW |			//Ö§³Ö´°¿Ú  
 		PFD_SUPPORT_OPENGL |			//Ö§³ÖOpenGL  
@@ -170,30 +303,37 @@ void CPlot::SetupPixelFormat() //ÎªÉè±¸»·¾³ÉèÖÃÏñËØ¸ñÊ½
 
 void CPlot::Draw()
 {
+	wglMakeCurrent(m_hDC, m_hRC);	// MDI ÔÚ¶à¸ö×Ó´°¿ÚÖ®¼äÀ´»Øµ÷»»»æÖÆÊ±Òª¼ÓµÄÒ»¾ä»°£¬²»È»Ö»»áÓÐÒ»¸ö×Ó´°¿ÚÄÜÕý³£»æÖÆ£¬ÆäËüµÄ¶¼±äºÚÁË
+
+
 	// ÉèÖÃ´°Ìå±³¾°ÑÕÉ«
-	glClearColor(m_ClrWnd.R, m_ClrWnd.G, m_ClrWnd.B, m_ClrWnd.A);
+	glClearColor(m_stFigClrInfo.ClrWnd.R, m_stFigClrInfo.ClrWnd.G, m_stFigClrInfo.ClrWnd.B, m_stFigClrInfo.ClrWnd.A);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); //ÇåÆÁºÍÇå³ýÉî¶È»º³åÇø  
 
 	//½øÐÐÊÓ½Ç±ä»»
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	//ÉèÖÃ¿É¼û×ø±êÇøÓò
-	gluOrtho2D(m_xmin, m_xmax, m_ymin , m_ymax);
+	gluOrtho2D(m_stAxisInfo.xmin, m_stAxisInfo.xmax, m_stAxisInfo.ymin, m_stAxisInfo.ymax);
 	//ÉèÖÃÍ¶Ó°µ½ÆÁÄ»ÉÏµÄÇøÓò
-	glViewport(m_FigRect.x, m_FigRect.y, m_FigRect.width, m_FigRect.height);
+	glViewport(m_FigRect.x, m_FigRect.y, m_FigRect.width, m_FigRect.heigh);
+
 
 	//»æÖÆÍ¼ÐÎÇøµÄ±³¾°
 	DrawBG();
 
 
+
 	//»­×ø±ê
 	DrawAxis();
 
+	//g_mtx.lock();
 	//»æÖÆÊý¾Ý
 	DrawData();
+	//g_mtx.unlock();
 
 	glFlush();
-	SwapBuffers(m_hDC);
+	bool bRet = SwapBuffers(m_hDC);
 
 	//ÀûÓÃGDI»æÖÆ×ø±ê¿Ì¶È£¬±ØÐëÔÚ×îºó»­£¬²»È»»á±»OpenGL¸²¸Ç
 	DrawText();
@@ -201,12 +341,13 @@ void CPlot::Draw()
 	if (m_bShowCoord)
 		ShowPosCoord(m_tagPt);
 
-	
+
+
 }
 
 void CPlot::DrawAxis()
 {
-	glColor3f(m_ClrAxis.R, m_ClrAxis.G, m_ClrAxis.B);
+	glColor3f(m_stFigClrInfo.ClrAxis.R, m_stFigClrInfo.ClrAxis.G, m_stFigClrInfo.ClrAxis.B);
 
 	//»æÖÆÍø¸ñ
 	glLineStipple(1, 0x0F0F);	//ÉèÖÃÐéÏßÄ£Ê½
@@ -214,40 +355,40 @@ void CPlot::DrawAxis()
 	glLineWidth(1.0f);			//ÏÞÖÆÏß¿í¶È
 	glBegin(GL_LINES);
 
-	m_xscale = (m_xmax - m_xmin) / 10.0;
-	m_yscale = (m_ymax - m_ymin) / 10.0;
+	m_stAxisInfo.xscale = (m_stAxisInfo.xmax - m_stAxisInfo.xmin) / 10.0;
+	m_stAxisInfo.yscale = (m_stAxisInfo.ymax - m_stAxisInfo.ymin) / 10.0;
 
-	//xÖá·½ÏòÍø¸ñ
-	float y = m_ymin;
-	for (; y <= m_ymax; y+=m_yscale)
-	{
-		glVertex2f(m_xmin, y);
-		glVertex2f(m_xmax, y);
-	}
 	//yÖá·½ÏòÍø¸ñ
-	float x = m_xmin;
-	for (; x<= m_xmax; x+=m_xscale)
+	float y = m_stAxisInfo.ymin;
+	for (; y <= m_stAxisInfo.ymax; y += m_stAxisInfo.yscale)
 	{
-		glVertex2f(x, m_ymin);
-		glVertex2f(x, m_ymax);
+		glVertex2f(m_stAxisInfo.xmin, y);
+		glVertex2f(m_stAxisInfo.xmax, y);
+	}
+	//xÖá·½ÏòÍø¸ñ
+	float x = m_stAxisInfo.xmin;
+	for (; x <= m_stAxisInfo.xmax; x += m_stAxisInfo.xscale)
+	{
+		glVertex2f(x, m_stAxisInfo.ymin);
+		glVertex2f(x, m_stAxisInfo.ymax);
 	}
 	glEnd();
 	glDisable(GL_LINE_STIPPLE);	//¹Ø±ÕÐéÏßÄ£Ê½
 
-	
+
 	//»æÖÆ±ß¿ò
 	glLineWidth(3.0f);
 	glBegin(GL_LINES);
 	//xÖá·½Ïò±ß¿ò
-	glVertex2f(m_xmin, m_ymin);
-	glVertex2f(m_xmax, m_ymin);
-	glVertex2f(m_xmin, m_ymax);
-	glVertex2f(m_xmax, m_ymax);
+	glVertex2f(m_stAxisInfo.xmin, m_stAxisInfo.ymin);
+	glVertex2f(m_stAxisInfo.xmax, m_stAxisInfo.ymin);
+	glVertex2f(m_stAxisInfo.xmin, m_stAxisInfo.ymax);
+	glVertex2f(m_stAxisInfo.xmax, m_stAxisInfo.ymax);
 	//yÖá·½Ïò±ß¿ò
-	glVertex2f(m_xmin, m_ymin);
-	glVertex2f(m_xmin, m_ymax);
-	glVertex2f(m_xmax, m_ymin);
-	glVertex2f(m_xmax, m_ymax);
+	glVertex2f(m_stAxisInfo.xmin, m_stAxisInfo.ymin);
+	glVertex2f(m_stAxisInfo.xmin, m_stAxisInfo.ymax);
+	glVertex2f(m_stAxisInfo.xmax, m_stAxisInfo.ymin);
+	glVertex2f(m_stAxisInfo.xmax, m_stAxisInfo.ymax);
 	glEnd();
 }
 
@@ -255,8 +396,8 @@ void CPlot::DrawBG()
 {
 	//»æÖÆÍ¼ÐÎÇøµÄ±³¾°
 	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); //ÇåÆÁºÍÇå³ýÉî¶È»º³åÇø  
-	glColor3f(m_ClrBG.R, m_ClrBG.G, m_ClrBG.B);
-	glRectf(m_xmin, m_ymin, m_xmax, m_ymax);
+	glColor3f(m_stFigClrInfo.ClrBG.R, m_stFigClrInfo.ClrBG.G, m_stFigClrInfo.ClrBG.B);
+	glRectf(m_stAxisInfo.xmin, m_stAxisInfo.ymin, m_stAxisInfo.xmax, m_stAxisInfo.ymax);
 }
 
 void CPlot::DrawData()
@@ -284,7 +425,7 @@ void CPlot::DrawText()
 
 	//¼ÆËã×Ö·û´®Õ¼µÄ¿í¸ßÏñËØ¡£
 	SIZE szText;
-	
+
 
 	//RECT rect = { 10, 10, 50, 26 };	//Ä¬ÈÏ×ÖÌå½«½üÒ»¸ö×ÖÄ¸£º¿íÎª8¸öÏñËØ£¬¸ßÎª16¸öÏñËØ
 	//::DrawTextA(m_hDC, "hello", 5,&rect, 0);
@@ -293,75 +434,51 @@ void CPlot::DrawText()
 	float fTemp = 0.0;
 	int xPos = 0;
 	int yPos = 0;
-	//m_xmin
-	memset(szCoord, 0, 100);
-	sprintf_s(szCoord, "%.3f", m_xmin);	//½«Êý×Ö(±£ÁôÐ¡ÊýµãºóÈýÎ»)×ª»¯Îª×Ö·û´®£¬
-	sscanf_s(szCoord, "%f", &fTemp);	//×Ö·û´®×ª»¯ÎªÊý×Ö
-	sprintf_s(szCoord, "%G", fTemp);	//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
-	GetTextExtentPoint32A(m_hDC, szCoord, strlen(szCoord), &szText);	//¼ÆËã×Ö·û´®ËùÕ¼ÓÃµÄÏñËØ
-	xPos = m_FigRect.x;
-	yPos = m_iClientHeight - m_FigRect.y;
-	TextOutA(m_hDC, xPos, yPos +3 , szCoord, strlen(szCoord));
-	//m_xmax
-	memset(szCoord, 0, 100);
-	sprintf_s(szCoord, "%.3f", m_xmax);
-	sscanf_s(szCoord, "%f", &fTemp);	//×Ö·û´®×ª»¯ÎªÊý×Ö
-	sprintf_s(szCoord, "%G", fTemp);	//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
-	xPos = m_FigRect.x + m_FigRect.width;
-	yPos = m_iClientHeight - m_FigRect.y;
-	TextOutA(m_hDC, xPos - szText.cx/2, yPos + 3, szCoord, strlen(szCoord));
-	//m_ymin
-	memset(szCoord, 0, 100);
-	sprintf_s(szCoord, "%.3f", m_ymin);
-	sscanf_s(szCoord, "%f", &fTemp);	//×Ö·û´®×ª»¯ÎªÊý×Ö
-	sprintf_s(szCoord, "%G", fTemp);	//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
-	GetTextExtentPoint32A(m_hDC, szCoord, strlen(szCoord), &szText);
-	xPos = m_FigRect.x;
-	yPos = m_iClientHeight - m_FigRect.y;
-	TextOutA(m_hDC, xPos - szText.cx-2, yPos - szText.cy, szCoord, strlen(szCoord));
-	//m_ymax
-	memset(szCoord, 0, 100);
-	sprintf_s(szCoord, "%.3f", m_ymax);
-	sscanf_s(szCoord, "%f", &fTemp);	//×Ö·û´®×ª»¯ÎªÊý×Ö
-	sprintf_s(szCoord, "%G", fTemp);	//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
-	GetTextExtentPoint32A(m_hDC, szCoord, strlen(szCoord), &szText);
-	xPos = m_FigRect.x;
-	yPos = m_iClientHeight - m_FigRect.y- m_FigRect.height;
-	TextOutA(m_hDC, xPos - szText.cx - 2, yPos - szText.cy/2, szCoord, strlen(szCoord));
 
+	fTemp = m_stAxisInfo.xmin;
+	for (int i = 0; fTemp <= m_stAxisInfo.xmax + m_stAxisInfo.xscale/100.0; fTemp += m_stAxisInfo.xscale, ++i)
+	{
+		//stAxisInfo.xmin
+		memset(szCoord, 0, 100);
+		sprintf_s(szCoord, "%.3f", fTemp);	//½«Êý×Ö(±£ÁôÐ¡ÊýµãºóÈýÎ»)×ª»¯Îª×Ö·û´®£¬
+		fTemp = 0.0;
+		sscanf_s(szCoord, "%f", &fTemp);	//×Ö·û´®×ª»¯ÎªÊý×Ö
+		sprintf_s(szCoord, "%G", fTemp);	//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
+		GetTextExtentPoint32A(m_hDC, szCoord, strlen(szCoord), &szText);	//¼ÆËã×Ö·û´®ËùÕ¼ÓÃµÄÏñËØ
+		xPos = m_FigRect.x +i*m_FigRect.width/10.0;
+		yPos = m_iClientHeight - m_FigRect.y;
+		TextOutA(m_hDC, xPos - szText.cx / 2, yPos + 3, szCoord, strlen(szCoord));
+	}
+	
+	fTemp = m_stAxisInfo.ymin;
+	for (int i = 0; fTemp <= m_stAxisInfo.ymax + m_stAxisInfo.yscale / 100.0; fTemp += m_stAxisInfo.yscale, ++i)
+	{
+		memset(szCoord, 0, 100);
+		sprintf_s(szCoord, "%.3f", fTemp);	//Êý×Ó×ª»¯Îª×Ö·û´®
+		fTemp = 0.0;
+		sscanf_s(szCoord, "%f", &fTemp);	//×Ö·û´®×ª»¯ÎªÊý×Ö
+		sprintf_s(szCoord, "%G", fTemp);	//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
+		GetTextExtentPoint32A(m_hDC, szCoord, strlen(szCoord), &szText);
+		xPos = m_FigRect.x;
+		yPos = m_iClientHeight - m_FigRect.y - i*m_FigRect.heigh / 10.0;
+		TextOutA(m_hDC, xPos - szText.cx - 4, yPos - szText.cy / 2, szCoord, strlen(szCoord));
+	}
 
 }
 
-void CPlot::SetRect()
+void CPlot::SetFigRect()
 {
 	//´°¿Ú¿Í»§Çø
 	GetClientRect(m_hWnd, &m_ClientRect);
 	m_iClientWidth = m_ClientRect.right - m_ClientRect.left;
 	m_iClientHeight = m_ClientRect.bottom - m_ClientRect.top;
 	//»æÍ¼ÇøÐÅÏ¢
-	m_FigRect.x = m_iClientWidth * 0.1;
-	m_FigRect.y = m_iClientHeight * 0.1;
-	m_FigRect.width = m_iClientWidth*0.8;
-	m_FigRect.height = m_iClientHeight*0.8;
+	m_FigRect.x = m_iClientWidth * 0.05;
+	m_FigRect.y = m_iClientHeight * 0.05;
+	m_FigRect.width = m_iClientWidth*0.9;
+	m_FigRect.heigh = m_iClientHeight*0.9;
 }
 
-void CPlot::SetBGColor(GLColor ClrBG)
-{
-	m_ClrBG = ClrBG;
-}
-
-void CPlot::SetLineColor(GLColor ClrLine)
-{
-	m_ClrLine = ClrLine;
-}
-
-void CPlot::SetAxis(float xmin,float xmax,float ymin,float ymax)
-{
-	m_xmin = xmin;
-	m_xmax = xmax;
-	m_ymin = ymin;
-	m_ymax = ymax;
-}
 
 void CPlot::GetData()
 {
@@ -372,6 +489,7 @@ void CPlot::GetData()
 		GetYDataFromFile();
 		break;
 	case en_From_Sock:
+		GetDataFromSock();
 		break;
 	default:
 		break;
@@ -380,12 +498,12 @@ void CPlot::GetData()
 
 bool CPlot::GetYDataFromFile()	//»ñÈ¡»æÍ¼Êý¾Ý
 {
-	GetDataPath();
+	//GetDataPath();
 	bool bRet = false;
 
 	do
 	{
-		if (strlen(m_szDataPath) == 0)
+		if (wcslen(m_szDataPath) == 0)
 			break;
 		fstream file1;
 		file1.open(m_szDataPath, ios::in | ios::binary);
@@ -395,6 +513,8 @@ bool CPlot::GetYDataFromFile()	//»ñÈ¡»æÍ¼Êý¾Ý
 		int num = 0;
 		char ch[2];
 		short sData = 0;
+		memset(m_pDataX, 0, g_sockFrameLen);
+		memset(m_pDataY, 0, g_sockFrameLen);
 		while (!file1.eof())
 		{
 			memset(ch, 0, sizeof(ch));
@@ -403,15 +523,15 @@ bool CPlot::GetYDataFromFile()	//»ñÈ¡»æÍ¼Êý¾Ý
 			if (file1.good())			//·ÀÖ¹µ½ÎÄ¼þ½áÊø´¦¶à¶ÁÈ¡Ò»´Î
 			{
 				memcpy(&sData, ch, 2);
-				m_veDataY.push_back(sData);
-				m_veDataX.push_back(num);
+				m_pDataY[num] = sData;
+				m_pDataX[num] = num;
 				num++;
-				if (num == 199999)
+				if (num == g_sockFrameLen / 2)
 					break;
-			}	
+			}
 		}
 		file1.close();
-		m_iDataLen = m_veDataY.size() / 2 * 2;	//»ñÈ¡Êý¾Ý³¤¶È,fft±ä»»µÄÊý¾Ý³¤¶È±ØÐëÎª2µÄ±¶Êý£¬ÆæÊý¸ö»á³ö´í£¡
+		m_iDataLen = num / 2 * 2;	//»ñÈ¡Êý¾Ý³¤¶È,fft±ä»»µÄÊý¾Ý³¤¶È±ØÐëÎª2µÄ±¶Êý£¬ÆæÊý¸ö»á³ö´í£¡
 		fft();
 		bRet = true;
 	} while (false);
@@ -421,15 +541,15 @@ bool CPlot::GetYDataFromFile()	//»ñÈ¡»æÍ¼Êý¾Ý
 
 bool CPlot::GetXYDataFromFile()
 {
-	GetDataPath();
+	//GetDataPath();
 	bool bRet = false;
-	
+
 	do
 	{
-		if (strlen(m_szDataPath) == 0)
+		if (wcslen(m_szDataPath) == 0)
 			break;
 		fstream file1;
-		file1.open(m_szDataPath, ios::in|ios::binary);
+		file1.open(m_szDataPath, ios::in | ios::binary);
 		if (!file1)
 			break;
 		//¶ÁÈ¡ÎÄ¼þ£¬Ð´ÈçÎÄ¼þ£¬°´ÐÐ´¦Àí
@@ -437,6 +557,8 @@ bool CPlot::GetXYDataFromFile()
 		char ch[4];
 		short IData = 0;
 		short QData = 0;
+		memset(m_pDataX, 0, g_sockFrameLen);
+		memset(m_pDataY, 0, g_sockFrameLen);
 		while (!file1.eof())
 		{
 			memset(ch, 0, sizeof(ch));
@@ -447,15 +569,15 @@ bool CPlot::GetXYDataFromFile()
 			{
 				memcpy(&IData, ch, 2);
 				memcpy(&QData, ch + 2, 2);
-				m_veDataX.push_back(double(IData) / (1 << 15));
-				m_veDataY.push_back(double(QData) / (1 << 15));
+				m_pDataY[num] = IData;
+				m_pDataX[num] = QData;
 				num++;
-				if (num == 199999)
+				if (num == g_sockFrameLen / 2)
 					break;
-			}	
+			}
 		}
 		file1.close();
-		m_iDataLen = m_veDataY.size()/2*2;	//»ñÈ¡Êý¾Ý³¤¶È,fft±ä»»µÄÊý¾Ý³¤¶È±ØÐëÎª2µÄ±¶Êý£¬ÆæÊý¸ö»á³ö´í£¡
+		m_iDataLen = num / 2 * 2;	//»ñÈ¡Êý¾Ý³¤¶È,fft±ä»»µÄÊý¾Ý³¤¶È±ØÐëÎª2µÄ±¶Êý£¬ÆæÊý¸ö»á³ö´í£¡
 		fft();
 		bRet = true;
 	} while (false);
@@ -466,8 +588,39 @@ bool CPlot::GetXYDataFromFile()
 bool CPlot::GetDataFromSock()
 {
 	bool bRet = false;
-	do 
+	do
 	{
+		GetSock();
+		if (m_stSockInfo.sockClient == INVALID_SOCKET)
+			break;
+
+		int num = 0;
+		short* pbuff = (short*)ato_buff;
+
+		short tempYMaxVal = -32768;
+		short tempYMinVal = 32767;
+
+		memset(m_pDataX, 0, g_sockFrameLen);
+		memset(m_pDataY, 0, g_sockFrameLen);
+		for (; num < g_sockFrameLen / 2; num++)
+		{
+			m_pDataY[num] = pbuff[num];
+			m_pDataX[num] = num;
+
+			if (m_pDataY[num] > tempYMaxVal)
+				tempYMaxVal = m_pDataY[num];
+			if (m_pDataY[num] < tempYMinVal)
+				tempYMinVal = m_pDataY[num];
+
+
+		}
+		if (tempYMinVal == 0 && tempYMaxVal == 0)
+			m_iDataLen = 0;
+		else
+			m_iDataLen = num;
+		fft();
+
+		bRet = true;
 	} while (false);
 	return bRet;
 
@@ -475,49 +628,78 @@ bool CPlot::GetDataFromSock()
 
 void CPlot::GetMaxMinValue()	//»ñÈ¡Êý¾ÝµÄ×î´óÖµ»ò×îÐ¡Öµ
 {
-	if (m_veDataY.empty() || m_veDataX.empty() || (m_fft_pout == NULL))
+	if (m_iDataLen == 0 || (m_fft_pout == NULL))
+		return;
+	
+	if (m_enDrawStatus == E_Draw_Static)
 		return;
 
-	
+
+	//int iLen = m_iDataLen / 4;
+	int iLen = 65536;
 	switch (m_enDrawType)
 	{
 	case en_Draw_Orignal:
 	{
+
+
 		//yÖá
-		std::vector<double>::iterator it_y = m_veDataY.begin();
-		m_ymin = *(std::min_element(it_y, m_veDataY.end()));
-		m_ymax = *(std::max_element(it_y, m_veDataY.end()));
+		short tempYMaxVal = -32768;
+		short tempYMinVal = 32767;
+		for (int i = 0; i < iLen; i++)
+		{
+			if (m_pDataY[i] > tempYMaxVal)
+				tempYMaxVal = m_pDataY[i];
+			if (m_pDataY[i] < tempYMinVal)
+				tempYMinVal = m_pDataY[i];
+		}
+
+		if (tempYMinVal == 0 && tempYMaxVal == 0)		//¸Õ¿ªÊ¼Ê±£¬socketÁ¬½ÓºÃÁË£¬µ«ÊÇ²¢Ã»ÓÐ´«Êý¾Ý¹ýÀ´
+		{
+			m_stAxisInfo.ymin = 0;
+			m_stAxisInfo.ymax = 1;
+		}
+		//Èç¹û stAxisInfo.ymin = stAxisInfo.ymax = 0  »áµ¼ÖÂ³ÌÐò¿¨ËÀ
+		else
+		{
+			m_stAxisInfo.ymin = tempYMinVal;
+			m_stAxisInfo.ymax = tempYMaxVal;
+		}
 
 		//xÖá
-		std::vector<double>::iterator it_x = m_veDataX.begin();
-		m_xmin = *(std::min_element(it_x, m_veDataX.end()));
-		m_xmax = *(std::max_element(it_x, m_veDataX.end()));
+		m_stAxisInfo.xmin = 0;
+		m_stAxisInfo.xmax = iLen;
 		break;
-	}			
+	}
 	case en_Draw_Spectrum:
 	{
 		//yÖá
-		m_ymin = *(std::min_element(m_fft_pabs, m_fft_pabs + ((m_iDataLen / 2 - 1) - 1)));
-		m_ymax = *(std::max_element(m_fft_pabs, m_fft_pabs + ((m_iDataLen / 2 - 1) - 1)));
-		
+		m_stAxisInfo.ymin = -140;
+		m_stAxisInfo.ymax = 0;
+
+
 		//xÖá
-		std::vector<double>::iterator it_x = m_veDataX.begin();
-		m_xmin = *(std::min_element(it_x, m_veDataX.end()));
-		m_xmax = m_fs/2;
+		m_stAxisInfo.xmin = 0;
+		m_stAxisInfo.xmax = m_fs / 2;
 		break;
 	}
-		
+
 	case en_Draw_Constellation:
 	{
 		//yÖá
-		std::vector<double>::iterator it_y = m_veDataY.begin();
-		m_ymin = *(std::min_element(it_y, m_veDataY.end()));
-		m_ymax = *(std::max_element(it_y, m_veDataY.end()));
+		//std::vector<double>::iterator it_y = m_veDataY.begin();
+		//stAxisInfo.ymin = *(std::min_element(it_y, m_veDataY.end()));
+		//stAxisInfo.ymax = *(std::max_element(it_y, m_veDataY.end()));
+		m_stAxisInfo.ymin = -1.2;
+		m_stAxisInfo.ymax = 1.2;
 
-		//xÖá
-		std::vector<double>::iterator it_x = m_veDataX.begin();
-		m_xmin = *(std::min_element(it_x, m_veDataX.end()));
-		m_xmax = *(std::max_element(it_x, m_veDataX.end()));
+		////xÖá
+		//std::vector<double>::iterator it_x = m_veDataX.begin();
+		//stAxisInfo.xmin = *(std::min_element(it_x, m_veDataX.end()));
+
+		//stAxisInfo.xmax = *(std::max_element(it_x, m_veDataX.end()));
+		m_stAxisInfo.xmin = -1.2;
+		m_stAxisInfo.xmax = 1.2;
 		break;
 	}
 	default:
@@ -526,9 +708,67 @@ void CPlot::GetMaxMinValue()	//»ñÈ¡Êý¾ÝµÄ×î´óÖµ»ò×îÐ¡Öµ
 
 }
 
-void CPlot::GetDataPath()
+void CPlot::GetSock()
 {
-	memcpy(m_szDataPath, "bbb_transfer1.bin", strlen("bbb_transfer1.bin"));
+	do
+	{
+		if (m_stSockInfo.sockClient != INVALID_SOCKET)
+			break;
+
+		//ÏÈÇåÀíSocket£¬¿ÉÒÔ¶Ï¿ªºóÔÙ×Ô¶¯Á¬½Ó
+		closesocket(m_stSockInfo.sockSrv);
+		WSACleanup();
+			
+
+		WSADATA wsaData;
+		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+		{
+			::MessageBoxA(NULL, "WSA Startup Failed!", "Error", NULL);
+			break;
+		}
+
+		//´´½¨ÓÃÓÚ¼àÌýµÄÌ×½Ó×Ö,¼´·þÎñ¶ËµÄÌ×½Ó×Ö
+		m_stSockInfo.sockSrv = socket(AF_INET, SOCK_STREAM, 0);
+
+		SOCKADDR_IN addrSrv;
+
+		addrSrv.sin_family = AF_INET;
+		addrSrv.sin_port = htons(m_stSockInfo.sockPort); //1024ÒÔÉÏµÄ¶Ë¿ÚºÅ
+		addrSrv.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
+
+		if (SOCKET_ERROR == ::bind(m_stSockInfo.sockSrv, (LPSOCKADDR)&addrSrv, sizeof(SOCKADDR_IN)))
+		{
+			printf("Failed bind:%d\n", WSAGetLastError());
+		}
+
+		if (listen(m_stSockInfo.sockSrv, 10) == SOCKET_ERROR){
+			printf("Listen failed:%d", WSAGetLastError());
+		}
+
+		SOCKADDR_IN addrClient;
+		int len = sizeof(SOCKADDR);
+
+		//µÈ´ý¿Í»§ÇëÇóµ½À´,»á½« ¶¨Ê±Æ÷Ïß³Ì ×èÈû
+		m_stSockInfo.sockClient = accept(m_stSockInfo.sockSrv, (SOCKADDR *)&addrClient, &len);
+		if (m_stSockInfo.sockClient == INVALID_SOCKET)
+		{
+			//::MessageBoxA(NULL, "Accept Failed!", "Error", NULL);
+			break;
+		}
+
+		//´´½¨½ÓÊÕÏß³Ì
+		_beginthread(CallBack_RecvProc, 0, &m_stSockInfo.sockClient); //´´½¨¶¨Ê±Æ÷Ïß³ÌÒÔÓÃÀ´ÔËÐÐ¶¨Ê±Æ÷
+
+		//printf("Accept client IP:[%s]\n", inet_ntoa(addrClient.sin_addr));
+
+	} while (0);
+
+}
+
+void CPlot::GetDataPath(wchar_t* wszPath)
+{
+	wmemcpy(m_szDataPath, wszPath, wcslen(wszPath));
+	//wmemcpy(m_szDataPath, "bbb_transfer1.bin", strlen("bbb_transfer1.bin"));
 	//memcpy(m_szDataPath, "ccc.bin", strlen("ccc.bin"));
 }
 
@@ -538,7 +778,7 @@ void CPlot::OnReshape()
 	GetClientRect(m_hWnd, &m_ClientRect);
 	m_iClientWidth = m_ClientRect.right - m_ClientRect.left;
 	m_iClientHeight = m_ClientRect.bottom - m_ClientRect.top;
-	SetRect();
+	SetFigRect();
 	wglDeleteContext(m_hRC);
 	m_hRC = wglCreateContext(m_hDC);	//´´½¨OpenGL»æÍ¼»·¾³²¢´´½¨Ò»¸öÖ¸ÏòOpenGL»æÖÆ»·¾³µÄ¾ä±ú  
 	wglMakeCurrent(m_hDC, m_hRC);		//½«´«µÝ¹ýÀ´µÄ»æÖÆ»·¾³ÉèÖÃÎªOpenGL½«Òª½øÐÐ»æÖÆµÄµ±Ç°»æÖÆ»·¾³  
@@ -549,62 +789,62 @@ void CPlot::OnTranslate(const tagPOINT ptPre, const tagPOINT ptNow)	//Æ½ÒÆÍ¼Ïñ,Í
 {
 	//Æ½ÒÆxÖá
 	float fxOffSent = ScreentoOpenGLCoord(ptPre).x - ScreentoOpenGLCoord(ptNow).x;
-	m_xmin += fxOffSent;
-	m_xmax += fxOffSent;
+	m_stAxisInfo.xmin += fxOffSent;
+	m_stAxisInfo.xmax += fxOffSent;
 	//Æ½ÒÆyÖá
 	float fyOffSent = ScreentoOpenGLCoord(ptPre).y - ScreentoOpenGLCoord(ptNow).y;
-	m_ymin += fyOffSent;
-	m_ymax += fyOffSent;
+	m_stAxisInfo.ymin += fyOffSent;
+	m_stAxisInfo.ymax += fyOffSent;
 
 }
 
-void CPlot::OnScale(float fTime)		
+void CPlot::OnScale(float fTime)
 {//Ëõ·ÅÍ¼Ïñ,²»ÈÃËüÒ»Ö±ËõÐ¡£¬µ«¿ÉÒÔÒ»Ö±·Å´ó
 	/*if (m_iScaleCount >= 1)
 	{
-		if (fTime > 1)
-			m_iScaleCount++;
-		else
-			m_iScaleCount--;
-		//Ëõ·ÅxÖá
-		m_xmin = m_xmin / fTime;
-		m_xmax = m_xmax / fTime;
-		//Ëõ·ÅyÖá
-		/ *m_ymin = m_ymin / fTime;
-		m_ymax = m_ymax / fTime;* /
+	if (fTime > 1)
+	m_iScaleCount++;
+	else
+	m_iScaleCount--;
+	//Ëõ·ÅxÖá
+	stAxisInfo.xmin = stAxisInfo.xmin / fTime;
+	stAxisInfo.xmax = stAxisInfo.xmax / fTime;
+	//Ëõ·ÅyÖá
+	/ *stAxisInfo.ymin = stAxisInfo.ymin / fTime;
+	stAxisInfo.ymax = stAxisInfo.ymax / fTime;* /
 	}
 	else if (m_iScaleCount == 0)
 	{
-		if (fTime > 1)
-		{
-			m_iScaleCount++;
-			//Ëõ·ÅxÖá
-			m_xmin = m_xmin / fTime;
-			m_xmax = m_xmax / fTime;
-			//Ëõ·ÅyÖá
-			/ *m_ymin = m_ymin / fTime;
-			m_ymax = m_ymax / fTime;* /
-		}	
+	if (fTime > 1)
+	{
+	m_iScaleCount++;
+	//Ëõ·ÅxÖá
+	stAxisInfo.xmin = stAxisInfo.xmin / fTime;
+	stAxisInfo.xmax = stAxisInfo.xmax / fTime;
+	//Ëõ·ÅyÖá
+	/ *stAxisInfo.ymin = stAxisInfo.ymin / fTime;
+	stAxisInfo.ymax = stAxisInfo.ymax / fTime;* /
+	}
 	}*/
 	/*
 	//Ëõ·ÅxÖá
-	m_xmin = m_xmin / fTime;
-	m_xmax = m_xmax / fTime;
+	stAxisInfo.xmin = stAxisInfo.xmin / fTime;
+	stAxisInfo.xmax = stAxisInfo.xmax / fTime;
 	//Ëõ·ÅyÖá
-	m_ymin = m_ymin / fTime;
-	m_ymax = m_ymax / fTime;
+	stAxisInfo.ymin = stAxisInfo.ymin / fTime;
+	stAxisInfo.ymax = stAxisInfo.ymax / fTime;
 	*/
 
 	//±£³ÖÆÁÄ»×óÏÂ½Ç²»±äµÄ
-	m_xmax = m_xmax - (m_xmin - m_xmin / fTime);
-	m_ymax = m_ymax - (m_ymin - m_ymin / fTime);
+	m_stAxisInfo.xmax = m_stAxisInfo.xmax - (m_stAxisInfo.xmin - m_stAxisInfo.xmin / fTime);
+	//stAxisInfo.ymax = stAxisInfo.ymax - (stAxisInfo.ymin - stAxisInfo.ymin / fTime);
 }
 
 bool CPlot::IsinRect(const tagPOINT pt)	//ÅÐ¶ÏÊó±êÊÇ·ñÔÚ»æÍ¼ÇøÓòÄÚ
 {
-	if (pt.x<m_FigRect.x || 
-		pt.x>m_FigRect.x+m_FigRect.width ||
-		pt.y<m_iClientHeight-m_FigRect.y-m_FigRect.height ||
+	if (pt.x<m_FigRect.x ||
+		pt.x>m_FigRect.x + m_FigRect.width ||
+		pt.y<m_iClientHeight - m_FigRect.y - m_FigRect.heigh ||
 		pt.y>m_iClientHeight - m_FigRect.y)
 		return false;
 	return true;
@@ -612,7 +852,7 @@ bool CPlot::IsinRect(const tagPOINT pt)	//ÅÐ¶ÏÊó±êÊÇ·ñÔÚ»æÍ¼ÇøÓòÄÚ
 
 void CPlot::ShowPosCoord(const tagPOINT pt)	//ÏÔÊ¾µãµÄ×ø±êÖµ
 {
-	GLPoint Coord=ScreentoOpenGLCoord(pt);
+	GLPoint Coord = ScreentoOpenGLCoord(pt);
 	float fTemp1 = 0.0;
 	float fTemp2 = 0.0;
 
@@ -620,8 +860,8 @@ void CPlot::ShowPosCoord(const tagPOINT pt)	//ÏÔÊ¾µãµÄ×ø±êÖµ
 	memset(szCoord, 0, sizeof(szCoord));
 	sprintf_s(szCoord, "%.2f,%.2f", Coord.x, Coord.y);
 
-	sscanf_s(szCoord, "%f,%f", &fTemp1,&fTemp2);	//×Ö·û´®×ª»¯ÎªÊý×Ö
-	sprintf_s(szCoord, "(%G,%G)", fTemp1,fTemp2);		//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
+	sscanf_s(szCoord, "%f,%f", &fTemp1, &fTemp2);	//×Ö·û´®×ª»¯ÎªÊý×Ö
+	sprintf_s(szCoord, "(%G,%G)", fTemp1, fTemp2);		//½«Êý×Ö×ª»¯Îª×Ö·û´®£¬²¢ÉáÈ¥Ð¡ÊýÄ©Î²µÄ0
 
 
 	TextOutA(m_hDC, pt.x, pt.y, szCoord, strlen(szCoord));
@@ -632,8 +872,8 @@ GLPoint CPlot::ScreentoOpenGLCoord(const tagPOINT Screen_pt)
 {
 	//µ÷ÓÃ¸Ãº¯ÊýÖ®Ç°Ó¦¸ÃÅÐ¶ÏÒ»ÏÂ¸ÃµãÊÇ·ñÔÚ»æÍ¼Çø
 	GLPoint OpenGL_pt = { 0, 0 };
-	OpenGL_pt.x = m_xmin + (Screen_pt.x - m_FigRect.x) / m_FigRect.width * (m_xmax - m_xmin);
-	OpenGL_pt.y = m_ymin + ((m_iClientHeight - m_FigRect.y) - Screen_pt.y) / m_FigRect.height* (m_ymax - m_ymin);
+	OpenGL_pt.x = m_stAxisInfo.xmin + (Screen_pt.x - m_FigRect.x) / m_FigRect.width * (m_stAxisInfo.xmax - m_stAxisInfo.xmin);
+	OpenGL_pt.y = m_stAxisInfo.ymin + ((m_iClientHeight - m_FigRect.y) - Screen_pt.y) / m_FigRect.heigh* (m_stAxisInfo.ymax - m_stAxisInfo.ymin);
 	return OpenGL_pt;
 }
 
@@ -641,8 +881,8 @@ tagPOINT CPlot::OpenGLtoScreenCoord(const GLPoint OpenGL_pt)
 {
 	//µ÷ÓÃ¸Ãº¯ÊýÖ®Ç°Ó¦¸ÃÅÐ¶ÏÒ»ÏÂ¸ÃµãÊÇ·ñÔÚ»æÍ¼Çø
 	tagPOINT Screen_pt = { 0, 0 };
-	Screen_pt.x = m_FigRect.x + (OpenGL_pt.x - m_xmin)/(m_xmax - m_xmin) * m_FigRect.width;
-	Screen_pt.y = (m_iClientHeight - m_FigRect.y) - (OpenGL_pt.y - m_ymin)/(m_ymax - m_ymin) * m_FigRect.height;
+	Screen_pt.x = m_FigRect.x + (OpenGL_pt.x - m_stAxisInfo.xmin) / (m_stAxisInfo.xmax - m_stAxisInfo.xmin) * m_FigRect.width;
+	Screen_pt.y = (m_iClientHeight - m_FigRect.y) - (OpenGL_pt.y - m_stAxisInfo.ymin) / (m_stAxisInfo.ymax - m_stAxisInfo.ymin) * m_FigRect.heigh;
 	return Screen_pt;
 }
 
@@ -665,6 +905,8 @@ void CPlot::DestroyPlot()
 /******************************ÐÅºÅ´¦Àí²¿·Ö*****************************/
 void CPlot::fft()
 {
+
+
 	//fftÖ®Ç°ÏÈÊÍ·ÅÄÚ´æ£¬·ÀÖ¹ÄÚ´æÐ¹Â©
 	if (m_fft_pin)
 		fftw_free(m_fft_pin);
@@ -676,19 +918,23 @@ void CPlot::fft()
 	m_fft_pout = NULL;
 	m_fft_pabs = NULL;
 
+	//OnTimerÏß³Ì±ÈRecvProcÏß³ÌÏÈÆô¶¯£¬ËùÒÔµÚÒ»´ÎÈ¡Êý¾ÝÎª¿Õ
+	if (m_iDataLen == 0)
+		return;
+
 	fftw_plan p;
 
 	m_fft_pin = (double *)fftw_malloc(sizeof(double) * m_iDataLen);
-	m_fft_pabs = (double *)fftw_malloc(sizeof(double) * (m_iDataLen/2-1));
+	m_fft_pabs = (double *)fftw_malloc(sizeof(double) * (m_iDataLen / 2 - 1));
 	m_fft_pout = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * m_iDataLen);
 
 	if (!m_fft_pin || !m_fft_pout)
 		return;
-	
+
 	//¸³Öµ
 	for (int i = 0; i < m_iDataLen; i++)
 	{
-		m_fft_pin[i] = (m_veDataY[i] / (1 << 15)) / (m_iDataLen);	//¿¼ÂÇµ½Êµ¼ÊµÄ16bit ADC²É¼¯
+		m_fft_pin[i] = ((double)m_pDataY[i] / (1 << 15)) / (m_iDataLen);	//¿¼ÂÇµ½Êµ¼ÊµÄ16bit ADC²É¼¯
 	}
 
 	// ¸µÀïÒ¶±ä»»
@@ -699,8 +945,8 @@ void CPlot::fft()
 	//¸³Öµ
 	for (int i = 0; i <(m_iDataLen / 2 - 1); i++)
 	{
-		m_fft_pabs[i] = (sqrt(pow(m_fft_pout[i][0] , 2) + pow(m_fft_pout[i][1] , 2))) ;
-		m_fft_pabs[i] = 20.0 * log10(m_fft_pabs[i]);	//log10(0)»á³öÏÖÄªÃûÆäÃîµÄ´íÎó
+		m_fft_pabs[i] = pow(m_fft_pout[i][0], 2) + pow(m_fft_pout[i][1], 2);
+		m_fft_pabs[i] = 10.0 * log10(m_fft_pabs[i]);	//log10(0)»á³öÏÖÄªÃûÆäÃîµÄ´íÎó
 	}
 
 
@@ -711,41 +957,38 @@ void CPlot::fft()
 
 void CPlot::DrawOrignal()
 {
+	if (m_iDataLen == 0)
+		return;
+
+	int i = 0;
 	glDisable(GL_LINE_STIPPLE);
 	glLineWidth(2.0);
-	glColor3f(m_ClrLine.R, m_ClrLine.G, m_ClrLine.B);
-	std::vector<double>::iterator itX = m_veDataX.begin();
-	std::vector<double>::iterator itY = m_veDataY.begin();
+	glColor3f(m_stFigClrInfo.ClrLine.R, m_stFigClrInfo.ClrLine.G, m_stFigClrInfo.ClrLine.B);
 	glBegin(GL_LINE_STRIP);
-	while (itX != m_veDataX.end())
+	while (i < m_iDataLen/4)
 	{
-		glVertex2f(*itX, *itY);
-		++itX;
-		++itY;
+		glVertex2f(i, m_pDataY[i]);
+		++i;
 	}
 	glEnd();
 }
 
 void CPlot::DrawSpectrum()
 {
-	
-	if (m_fft_pout == NULL)
+	if (m_iDataLen == 0 || m_fft_pout == NULL)
 		return;
 
 	glDisable(GL_LINE_STIPPLE);
 	glLineWidth(2.0);
-	glColor3f(m_ClrLine.R, m_ClrLine.G, m_ClrLine.B);
+	glColor3f(m_stFigClrInfo.ClrLine.R, m_stFigClrInfo.ClrLine.G, m_stFigClrInfo.ClrLine.B);
 
-
-
-	float fs = 100;	//100MHZ
-
-	std::vector<double>::iterator itX = m_veDataX.begin();
+	//float fs = 100;	//100MHZ
 	int i = 0;
 	glBegin(GL_LINE_STRIP);
 	while (i<(m_iDataLen / 2 - 1))
+	//while (i<65536)
 	{
-		glVertex2f(i*fs/m_iDataLen, m_fft_pabs[i]);
+		glVertex2f(i*m_fs / m_iDataLen, m_fft_pabs[i]);
 		++i;
 	}
 	glEnd();
@@ -754,17 +997,16 @@ void CPlot::DrawSpectrum()
 void CPlot::DrawConstellation()
 {
 	glDisable(GL_LINE_STIPPLE);
-	glLineWidth(2.0);
-	glColor3f(m_ClrLine.R, m_ClrLine.G, m_ClrLine.B);
-	std::vector<double>::iterator itX = m_veDataX.begin();
-	std::vector<double>::iterator itY = m_veDataY.begin();
-	//glBegin(GL_POINTS);
-	glBegin(GL_LINE_STRIP);
-	while (itX != m_veDataX.end())
+	glLineWidth(50.0);
+	glColor3f(m_stFigClrInfo.ClrLine.R, m_stFigClrInfo.ClrLine.G, m_stFigClrInfo.ClrLine.B);
+	//glColor3f(0.0, 0.0, 1.0);
+	//std::vector<double>::iterator itX = m_veDataX.begin();
+	//std::vector<double>::iterator itY = m_veDataY.begin();
+	glBegin(GL_POINTS);
+	//glBegin(GL_LINE_STRIP);
+	for (int i = 0; i < m_dsp->m_symbolsLen;i++)
 	{
-		glVertex2f(*itX, *itY);
-		++itX;
-		++itY;
+		glVertex2f(m_dsp->m_pISymbols[i], m_dsp->m_pQSymbols[i]);
 	}
 	glEnd();
 }
